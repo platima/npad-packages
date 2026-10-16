@@ -1,0 +1,120 @@
+name: Publish repositories
+
+# Builds the signed apt and dnf repositories from the .deb/.rpm assets of the
+# newest stable npad releases and deploys them with GitHub Pages
+# (https://pkg.npad.dev - see config.env). No package is ever committed to git.
+#
+# Triggers:
+#   repository_dispatch  platima/npad's release workflow, after its assets are
+#                        attached (needs the NPAD_PACKAGES_TOKEN secret there)
+#   schedule             daily backstop, in case a dispatch is missed
+#   workflow_dispatch    run it by hand from the Actions tab
+#   push                 to main, when the scripts, site or config change
+
+on:
+  repository_dispatch:
+    types: [npad-release]
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/**"
+      - "site-src/**"
+      - "config.env"
+      - ".github/workflows/publish.yml"
+
+permissions:
+  contents: read
+
+# One deployment at a time; let a running one finish rather than cancel it
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # The signing key lives in this environment's secrets only. Restrict the
+    # environment to the main branch (see README) so no other ref can read it.
+    environment: repo-signing
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Install tools
+      run: |
+        sudo apt-get update -q
+        sudo apt-get install -y -q apt-utils createrepo-c rpm gnupg
+
+    - name: Import the signing key
+      env:
+        GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      run: |
+        if [ -z "$GPG_PRIVATE_KEY" ]; then
+          echo "::error::The GPG_PRIVATE_KEY secret is not set in the repo-signing environment (see README)"
+          exit 1
+        fi
+        umask 077
+        export GNUPGHOME="$RUNNER_TEMP/gnupg"
+        mkdir -p "$GNUPGHOME"
+        if [ -n "$GPG_PASSPHRASE" ]; then
+          printf '%s' "$GPG_PASSPHRASE" > "$RUNNER_TEMP/gpg-passphrase"
+          echo "GPG_PASSPHRASE_FILE=$RUNNER_TEMP/gpg-passphrase" >> "$GITHUB_ENV"
+        fi
+        printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --import
+        fpr=$(gpg --batch --list-secret-keys --with-colons | awk -F: '$1 == "fpr" { print $10; exit }')
+        [ -n "$fpr" ] || { echo "::error::no secret key found in GPG_PRIVATE_KEY"; exit 1; }
+        echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
+        echo "GPG_FPR=$fpr" >> "$GITHUB_ENV"
+        echo "Signing as $fpr"
+
+    - name: Download the release packages
+      run: sh scripts/fetch-releases.sh work/assets
+
+    - name: Build the repositories
+      run: sh scripts/build-repos.sh work/assets site
+
+    - name: Verify them with the public key only
+      run: sh scripts/verify-repos.sh site
+
+    - name: Remove the key material
+      if: always()
+      run: |
+        gpgconf --kill gpg-agent 2>/dev/null || true
+        rm -rf "$RUNNER_TEMP/gnupg" "$RUNNER_TEMP/gpg-passphrase"
+
+    - uses: actions/upload-pages-artifact@v5
+      with:
+        path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write      # deploy to Pages
+      id-token: write   # prove the deployment comes from this workflow
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+    - id: deployment
+      uses: actions/deploy-pages@v5
+
+  # GitHub switches scheduled workflows off after 60 days without repository
+  # activity, which would quietly remove the daily backstop. Re-enabling the
+  # workflow from a scheduled run restarts that clock.
+  keepalive:
+    if: ${{ github.event_name == 'schedule' }}
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+    - name: Re-enable this workflow
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: gh workflow enable publish.yml --repo "$GITHUB_REPOSITORY"

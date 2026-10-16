@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>npad package repository</title>
+<style>
+  :root { --bg: #fff; --fg: #1d1d1f; --muted: #5c5c63; --code-bg: #f3f3f5; --line: #d9d9de; --link: #0b57d0; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #17171a; --fg: #ececf0; --muted: #a0a0aa; --code-bg: #232328; --line: #34343b; --link: #8ab4f8; }
+  }
+  body { margin: 0 auto; max-width: 46rem; padding: 2rem 1rem 4rem; background: var(--bg); color: var(--fg);
+         font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  h1 { font-size: 1.6rem; margin: 0 0 .25rem; }
+  h2 { font-size: 1.15rem; margin: 2rem 0 .5rem; }
+  p, li { color: var(--fg); }
+  .muted { color: var(--muted); }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; padding: .8rem 1rem; overflow-x: auto; }
+  code { font: .92em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  a { color: var(--link); }
+</style>
+</head>
+<body>
+<h1>npad package repository</h1>
+<p class="muted">Signed apt and dnf repositories for <a href="https://github.com/platima/npad">npad</a>,
+the lightweight Notepad-style editor. Packages are rebuilt from the
+<a href="https://github.com/platima/npad/releases">GitHub releases</a>; amd64 / x86_64 only.</p>
+
+<h2>Debian, Ubuntu, Linux Mint</h2>
+<pre><code>sudo install -d -m 0755 /etc/apt/keyrings
+sudo curl -fsSL @BASE_URL@/npad.asc -o /etc/apt/keyrings/npad.asc
+sudo curl -fsSL @BASE_URL@/npad.sources -o /etc/apt/sources.list.d/npad.sources
+sudo apt update &amp;&amp; sudo apt install npad</code></pre>
+
+<h2>Fedora</h2>
+<pre><code>sudo curl -fsSL @BASE_URL@/npad.repo -o /etc/yum.repos.d/npad.repo
+sudo dnf install npad</code></pre>
+
+<h2>Either, in one step</h2>
+<pre><code>curl -fsSL @BASE_URL@/install.sh | sudo sh</code></pre>
+<p class="muted">Pass <code>--repo-only</code> to add the repository without installing.
+<a href="install.sh">Read the script</a> first if you like.</p>
+
+<h2>Signing key</h2>
+<p>Metadata and packages are signed with <a href="npad.asc">npad.asc</a>.<br>
+Fingerprint: <code>@FINGERPRINT@</code></p>
+
+<h2>Remove</h2>
+<pre><code>sudo rm /etc/apt/sources.list.d/npad.sources /etc/apt/keyrings/npad.asc   # Debian family
+sudo rm /etc/yum.repos.d/npad.repo                                         # Fedora</code></pre>
+</body>
+</html>

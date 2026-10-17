@@ -20,13 +20,24 @@ tags=$(gh api "repos/$SOURCE_REPO/releases?per_page=50" \
 	exit 1
 }
 
+# gh's --pattern list: each published architecture's package and the .sha256
+# beside it (positional parameters, so the shell never globs the patterns)
+set --
+for arch in $DEB_ARCHES; do
+	set -- "$@" --pattern "npad_*_$arch.deb*"
+done
+for arch in $RPM_ARCHES; do
+	set -- "$@" --pattern "npad-*.$arch.rpm*"
+done
+
 for tag in $tags; do
 	echo "== $tag"
 	# A release without Linux packages (older ones, or an interrupted build)
 	# is skipped, not fatal: the others still publish. Any other failure
 	# (network, auth) is fatal, so a flaky download cannot drop a version.
+	# A release that predates an architecture simply has no file for it.
 	if ! gh release download "$tag" --repo "$SOURCE_REPO" --dir "$out" --clobber \
-		--pattern 'npad_*_amd64.deb*' --pattern 'npad-*.x86_64.rpm*' 2>"$out/.err"; then
+		"$@" 2>"$out/.err"; then
 		if grep -q 'no assets match' "$out/.err"; then
 			echo "   no Linux packages attached to $tag; skipping"
 		else
@@ -41,7 +52,7 @@ done
 rm -f "$out/.err"
 cd "$out"
 count=0
-for pkg in npad_*_amd64.deb npad-*.x86_64.rpm; do
+for pkg in npad_*.deb npad-*.rpm; do
 	[ -e "$pkg" ] || continue
 	if [ ! -f "$pkg.sha256" ]; then
 		echo "ERROR: $pkg has no $pkg.sha256 on its release" >&2
@@ -54,11 +65,17 @@ done
 	echo "ERROR: no npad packages found on the newest $KEEP_RELEASES releases" >&2
 	exit 1
 }
-ls npad_*_amd64.deb >/dev/null 2>&1 || {
+for arch in $DEB_ARCHES; do
+	echo "deb $arch: $(ls npad_*_"$arch".deb 2>/dev/null | wc -l)"
+done
+for arch in $RPM_ARCHES; do
+	echo "rpm $arch: $(ls npad-*."$arch".rpm 2>/dev/null | wc -l)"
+done
+ls npad_*.deb >/dev/null 2>&1 || {
 	echo "ERROR: no .deb found; refusing to publish an empty apt repository" >&2
 	exit 1
 }
-ls npad-*.x86_64.rpm >/dev/null 2>&1 || {
+ls npad-*.rpm >/dev/null 2>&1 || {
 	echo "ERROR: no .rpm found; refusing to publish an empty dnf repository" >&2
 	exit 1
 }

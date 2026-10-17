@@ -41,7 +41,10 @@ as_root() {
 }
 
 [ "$(uname -s)" = Linux ] || die "this repository is for Linux"
-[ "$(uname -m)" = x86_64 ] || die "only x86_64 (amd64) packages are published"
+case $(uname -m) in
+x86_64 | aarch64 | riscv64) ;;
+*) die "packages are published for x86_64, aarch64 (arm64) and riscv64, not $(uname -m)" ;;
+esac
 command -v curl >/dev/null 2>&1 || die "curl is required"
 
 ids=" "

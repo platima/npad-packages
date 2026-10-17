@@ -35,7 +35,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # pinned: the tool versions (rpm, createrepo-c) matter for signing
     # The signing key lives in this environment's secrets only. Restrict the
     # environment to the main branch (see README) so no other ref can read it.
     environment: repo-signing

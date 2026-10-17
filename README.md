@@ -27,8 +27,8 @@ What gets published at `$BASE_URL`:
 | `/npad.asc` | public signing key (armored) |
 | `/npad.sources`, `/npad.repo` | ready-made apt (deb822) and dnf configuration |
 | `/install.sh` | detects apt or dnf, adds the repository, installs npad |
-| `/apt/` | suite `stable`, component `main`, `amd64`: `dists/stable/{InRelease,Release,Release.gpg}`, `pool/` |
-| `/rpm/` | signed rpms plus `repodata/` with `repomd.xml.asc` |
+| `/apt/` | suite `stable`, component `main`, `binary-amd64`, `binary-arm64`, `binary-riscv64`: `dists/stable/{InRelease,Release,Release.gpg}`, one shared `pool/` |
+| `/rpm/` | signed rpms for `x86_64`, `aarch64` and `riscv64` plus `repodata/` with `repomd.xml.asc` |
 
 When it runs: when npad's release workflow sends a `repository_dispatch`
 (`npad-release`), daily at 03:17 UTC as a backstop, on demand
@@ -151,9 +151,18 @@ sudo dnf install npad
 
 ## Things to know
 
-- Only **amd64 / x86_64**. Adding an architecture means building it in npad's
-  release workflow and adding it to the `Architectures` lines and
-  `apt-ftparchive` calls here.
+- **Architectures**: amd64, arm64 and riscv64 (rpm: x86_64, aarch64,
+  riscv64), from npad v0.35.0 on; older releases are amd64 only, so the arm64
+  and riscv64 indexes start empty and fill as releases carry them. The list
+  lives in `config.env` (`DEB_ARCHES`, `RPM_ARCHES`), which drives the fetch
+  patterns, the apt indexes, the Release and `npad.sources` `Architectures`
+  fields and the checks in `verify-repos.sh`. Adding one means building it in
+  npad's release workflow and adding it there.
+- **`npad.sources` must list every architecture, or none.** apt skips a
+  deb822 source whose `Architectures` field does not include the machine's
+  own, with only a notice, so the original `Architectures: amd64` made the
+  repository invisible on arm64. Anyone who fetched that file on an Arm
+  machine has to fetch it again (`install.sh` does).
 - GitHub Pages caches for about ten minutes, so `apt update` can briefly report
   a size or hash mismatch right after a publish. Retrying a few minutes later
   fixes it.
@@ -176,7 +185,7 @@ Everything runs with a throwaway key; no secrets involved. Needs `apt-utils`
 export GNUPGHOME=$(mktemp -d)
 gpg --batch --pinentry-mode loopback --passphrase '' --quick-generate-key "test <t@example.invalid>" rsa4096 sign never
 export GPG_FPR=$(gpg --list-secret-keys --with-colons | awk -F: '$1=="fpr"{print $10;exit}')
-mkdir -p work/assets && cp /path/to/npad_*_amd64.deb /path/to/npad-*.x86_64.rpm work/assets/
+mkdir -p work/assets && cp /path/to/npad_*.deb /path/to/npad-*.rpm work/assets/
 sh scripts/build-repos.sh work/assets site
 sh scripts/verify-repos.sh site
 ```

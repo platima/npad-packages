@@ -1,7 +1,8 @@
 #!/bin/sh
 # Build the signed apt and dnf repositories plus the landing page into <site-dir>.
 # Usage: scripts/build-repos.sh <assets-dir> <site-dir>
-#   <assets-dir>  npad_*_amd64.deb and npad-*.x86_64.rpm (see fetch-releases.sh)
+#   <assets-dir>  npad_*_<arch>.deb and npad-*.<arch>.rpm for the architectures in
+#                 config.env (see fetch-releases.sh)
 # Environment:
 #   GPG_FPR              fingerprint of the signing key in the active keyring
 #                        (GNUPGHOME selects the keyring)
@@ -32,7 +33,8 @@ host=${BASE_URL#*://}
 host=${host%%/*}
 fpr_spaced=$(printf '%s' "$GPG_FPR" | sed 's/\(....\)/\1 /g; s/ $//')
 for f in index.html install.sh npad.sources npad.repo; do
-	sed "s|@BASE_URL@|$BASE_URL|g; s|@HOST@|$host|g; s|@FINGERPRINT@|$fpr_spaced|g" \
+	sed -e "s|@BASE_URL@|$BASE_URL|g; s|@HOST@|$host|g; s|@FINGERPRINT@|$fpr_spaced|g" \
+		-e "s|@DEB_ARCHES@|$DEB_ARCHES|g; s|@RPM_ARCHES@|$RPM_ARCHES|g" \
 		"$here/site-src/$f" >"$site/$f"
 done
 chmod 644 "$site"/index.html "$site"/install.sh "$site"/npad.sources "$site"/npad.repo
@@ -45,21 +47,31 @@ gpg --armor --export "$GPG_FPR" >"$site/npad.asc"
 	exit 1
 }
 
-# --- apt: suite stable, component main, amd64 only
+# --- apt: suite stable, component main, one binary-<arch> index per DEB_ARCHES
+# entry over a single shared pool
 pool=$site/apt/pool/main/n/npad
-bindir=$site/apt/dists/stable/main/binary-amd64
-mkdir -p "$pool" "$bindir"
-cp "$assets"/npad_*_amd64.deb "$pool/"
+mkdir -p "$pool"
+for arch in $DEB_ARCHES; do
+	for deb in "$assets"/npad_*_"$arch".deb; do
+		if [ -e "$deb" ]; then cp "$deb" "$pool/"; fi
+	done
+done
 (
 	cd "$site/apt"
-	apt-ftparchive --arch amd64 packages pool >dists/stable/main/binary-amd64/Packages
-	gzip -9 -n -k dists/stable/main/binary-amd64/Packages
+	for arch in $DEB_ARCHES; do
+		mkdir -p "dists/stable/main/binary-$arch"
+		# --arch keeps each index to its own architecture's packages; an
+		# architecture with none gets an empty (still valid, still signed) one
+		apt-ftparchive --arch "$arch" packages pool >"dists/stable/main/binary-$arch/Packages"
+		gzip -9 -n -k "dists/stable/main/binary-$arch/Packages"
+		echo "apt binary-$arch: $(grep -c '^Package:' "dists/stable/main/binary-$arch/Packages" || true) packages"
+	done
 	apt-ftparchive \
 		-o APT::FTPArchive::Release::Origin=npad \
 		-o APT::FTPArchive::Release::Label=npad \
 		-o APT::FTPArchive::Release::Suite=stable \
 		-o APT::FTPArchive::Release::Codename=stable \
-		-o APT::FTPArchive::Release::Architectures=amd64 \
+		-o "APT::FTPArchive::Release::Architectures=$DEB_ARCHES" \
 		-o APT::FTPArchive::Release::Components=main \
 		-o "APT::FTPArchive::Release::Description=npad text editor packages" \
 		release dists/stable >"$site/.Release.tmp"
@@ -68,8 +80,13 @@ cp "$assets"/npad_*_amd64.deb "$pool/"
 	gpgsign --armor --detach-sign --output dists/stable/Release.gpg dists/stable/Release
 )
 
-# --- dnf: sign each rpm, then the repository metadata
-cp "$assets"/npad-*.x86_64.rpm "$site/rpm/"
+# --- dnf: every RPM_ARCHES rpm in one tree (dnf installs only those its machine
+# runs); sign each rpm, then the repository metadata
+for arch in $RPM_ARCHES; do
+	for rpm in "$assets"/npad-*."$arch".rpm; do
+		if [ -e "$rpm" ]; then cp "$rpm" "$site/rpm/"; fi
+	done
+done
 extra="--batch --pinentry-mode loopback"
 [ -z "${GPG_PASSPHRASE_FILE:-}" ] || extra="$extra --passphrase-file $GPG_PASSPHRASE_FILE"
 # rpm's default gpg is /usr/bin/gpg2, which Debian and Ubuntu do not ship

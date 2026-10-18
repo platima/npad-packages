@@ -1,0 +1,35 @@
+name: Self-test
+
+# Exercises the pacman side with throwaway keys and fake packages, in a real
+# Arch Linux container: builds the signed repository, verifies it, installs from
+# it with signature checking on, and checks tampering is refused
+# (scripts/selftest-arch.sh). It needs no secrets, so it runs on pull requests
+# too. The real signing key is only ever used by publish.yml, from main.
+
+on:
+  pull_request:
+    paths:
+      - "scripts/**"
+      - "site-src/**"
+      - "config.env"
+      - ".github/workflows/selftest.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/**"
+      - "site-src/**"
+      - "config.env"
+      - ".github/workflows/selftest.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  arch:
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Build, serve and install in archlinux
+      run: docker run --rm -v "$PWD:/src:ro" archlinux:latest sh /src/scripts/selftest-arch.sh

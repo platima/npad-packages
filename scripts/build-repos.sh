@@ -1,13 +1,16 @@
 #!/bin/sh
-# Build the signed apt and dnf repositories plus the landing page into <site-dir>.
+# Build the signed apt, dnf and pacman repositories plus the landing page into
+# <site-dir>.
 # Usage: scripts/build-repos.sh <assets-dir> <site-dir>
-#   <assets-dir>  npad_*_<arch>.deb and npad-*.<arch>.rpm for the architectures in
-#                 config.env (see fetch-releases.sh)
+#   <assets-dir>  npad_*_<arch>.deb, npad-*.<arch>.rpm and (optionally)
+#                 npad-*-1-<arch>.pkg.tar.zst for the architectures in config.env
+#                 (see fetch-releases.sh)
 # Environment:
 #   GPG_FPR              fingerprint of the signing key in the active keyring
 #                        (GNUPGHOME selects the keyring)
 #   GPG_PASSPHRASE_FILE  optional file holding the key's passphrase
-# Needs: apt-ftparchive (apt-utils), createrepo_c, rpmsign (rpm), gpg, gzip.
+# Needs: apt-ftparchive (apt-utils), createrepo_c, rpmsign (rpm), gpg, gzip, and
+# for the pacman repository repo-add or docker (see build-arch-repo.sh).
 set -eu
 here=$(cd "$(dirname "$0")/.." && pwd)
 . "$here/config.env"
@@ -33,8 +36,8 @@ host=${BASE_URL#*://}
 host=${host%%/*}
 fpr_spaced=$(printf '%s' "$GPG_FPR" | sed 's/\(....\)/\1 /g; s/ $//')
 for f in index.html install.sh npad.sources npad.repo; do
-	sed -e "s|@BASE_URL@|$BASE_URL|g; s|@HOST@|$host|g; s|@FINGERPRINT@|$fpr_spaced|g" \
-		-e "s|@DEB_ARCHES@|$DEB_ARCHES|g; s|@RPM_ARCHES@|$RPM_ARCHES|g" \
+	sed -e "s|@BASE_URL@|$BASE_URL|g; s|@HOST@|$host|g; s|@FINGERPRINT@|$fpr_spaced|g; s|@FINGERPRINT_RAW@|$GPG_FPR|g" \
+		-e "s|@DEB_ARCHES@|$DEB_ARCHES|g; s|@RPM_ARCHES@|$RPM_ARCHES|g; s|@ARCH_ARCHES@|$ARCH_ARCHES|g" \
 		"$here/site-src/$f" >"$site/$f"
 done
 chmod 644 "$site"/index.html "$site"/install.sh "$site"/npad.sources "$site"/npad.repo
@@ -98,5 +101,18 @@ rpmsign \
 	--addsign "$site"/rpm/*.rpm
 createrepo_c --quiet --no-database --general-compress-type gz "$site/rpm"
 gpgsign --armor --detach-sign --output "$site/rpm/repodata/repomd.xml.asc" "$site/rpm/repodata/repomd.xml"
+
+# --- pacman: optional, a release may predate the Arch packages. Without any,
+# nothing is published under /arch and the landing page says so
+arch_out=$(sh "$here/scripts/build-arch-repo.sh" "$assets" "$site")
+printf '%s\n' "$arch_out"
+case $arch_out in
+*"arch repository: 0 packages"*)
+	# The Arch instructions are on the page, but the repository is not there yet
+	pending='<p class="note pending"><strong>Not published yet.</strong> The Arch repository appears with the first npad release that includes Arch packages. Until then, install the <code>.pkg.tar.zst</code> from the <a href="https://github.com/platima/npad/releases">release</a> with <code>pacman -U</code>.</p>'
+	;;
+*) pending= ;;
+esac
+sed -i "s|<!--ARCH-PENDING-->|$pending|" "$site/index.html"
 
 echo "Built repositories in $site"

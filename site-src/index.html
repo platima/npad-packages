@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>npad packages</title>
-<meta name="description" content="Signed apt and dnf repositories for npad, the lightweight Notepad-style text editor.">
+<meta name="description" content="Signed apt, dnf and pacman repositories for npad, the lightweight Notepad-style text editor.">
 <link rel="icon" href="https://npad.dev/assets/favicon-32.png">
 <style>
   :root {
@@ -74,6 +74,7 @@
   .card h2 { font-size: 1.15rem; margin: 0 0 .35rem; }
   .card p { margin: .4rem 0; }
   .card .note { color: var(--muted); font-size: .92rem; }
+  .footnote { margin: .1rem .25rem 0; color: var(--muted); font-size: .92rem; }
 
   .quick { margin: 2rem 0 1.5rem; border-color: var(--accent); background: linear-gradient(var(--accent-soft), var(--surface) 70%); }
   .quick pre { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -126,11 +127,11 @@
 
 <main class="wrap">
   <div class="hero">
-    <h1>Install npad with apt or dnf</h1>
+    <h1>Install npad with apt, dnf or pacman</h1>
     <p>Signed repositories for npad, the lightweight Notepad-style editor. Install once and
     npad updates with the rest of your system.</p>
     <ul class="chips" aria-label="Supported systems">
-      <li>Debian 12 &amp; 13</li><li>Ubuntu 22.04+</li><li>Linux Mint</li><li>Fedora</li>
+      <li>Debian 12 &amp; 13</li><li>Ubuntu 22.04+</li><li>Linux Mint</li><li>Fedora</li><li>Arch Linux</li>
       <li>amd64</li><li>arm64</li><li>riscv64</li>
     </ul>
   </div>
@@ -138,7 +139,7 @@
   <div class="card quick">
     <span class="label">Quickest</span>
     <h2>Install in one step</h2>
-    <p>Detects apt or dnf, adds the repository and its key, and installs npad.</p>
+    <p>Detects apt, dnf or pacman, adds the repository and its key, and installs npad.</p>
     <div class="code copyable"><pre><code>curl -fsSL @BASE_URL@/<wbr>install.sh | sudo sh</code></pre></div>
     <p class="note">Add <code>-s -- --repo-only</code> after <code>sh</code> to add the repository
     without installing. <a href="install.sh">Read the script</a> first if you prefer.</p>
@@ -161,15 +162,28 @@ sudo apt update &amp;&amp; sudo apt install npad</code></pre></div>
         <div class="code copyable"><pre><code>sudo curl -fsSL @BASE_URL@/npad.repo \
   -o /etc/yum.repos.d/npad.repo
 sudo dnf install npad</code></pre></div>
-        <p class="note">apt and dnf pick your machine's own architecture: amd64 (x86_64),
-        arm64 (aarch64) or riscv64. riscv64 needs Debian 13, Ubuntu 24.04 or newer.</p>
       </div>
+      <div class="card" id="arch">
+        <h2>Arch Linux</h2>
+        <p class="note">Arch Linux, Arch Linux ARM and Arch RISC-V. Adds the signing key to
+        pacman's keyring, trusts it, and adds the <code>[npad]</code> repository.</p>
+        <div class="code copyable"><pre><code>curl -fsSL @BASE_URL@/npad.asc | sudo pacman-key --add -
+sudo pacman-key --lsign-key @FINGERPRINT_RAW@
+printf '\n[npad]\nSigLevel = Required DatabaseRequired\nServer = @BASE_URL@/arch/$arch\n' \
+  | sudo tee -a /etc/pacman.conf
+sudo pacman -Sy npad</code></pre></div>
+        <!--ARCH-PENDING-->
+        <p class="note">Pacman fills in <code>$arch</code> itself. The <a href="#key">fingerprint below</a>
+        is the one to compare when you trust the key.</p>
+      </div>
+      <p class="footnote">apt, dnf and pacman pick your machine's own architecture: amd64 (x86_64),
+      arm64 (aarch64) or riscv64. On Debian and Ubuntu, riscv64 needs Debian 13, Ubuntu 24.04 or newer.</p>
     </div>
   </section>
 
   <section>
     <div class="grid">
-      <div class="card">
+      <div class="card" id="key">
         <h2>Signing key</h2>
         <p>Repository metadata and packages are signed with <a href="npad.asc">npad.asc</a>.</p>
         <p class="note">Fingerprint <span class="fingerprint">@FINGERPRINT@</span></p>
@@ -181,6 +195,8 @@ sudo dnf install npad</code></pre></div>
   /etc/apt/keyrings/npad.asc</code></pre></div>
         <p class="note">Fedora:</p>
         <div class="code"><pre><code>sudo rm /etc/yum.repos.d/npad.repo</code></pre></div>
+        <p class="note">Arch: delete the <code>[npad]</code> section from <code>/etc/pacman.conf</code>, then:</p>
+        <div class="code"><pre><code>sudo pacman-key --delete @FINGERPRINT_RAW@</code></pre></div>
       </div>
     </div>
   </section>

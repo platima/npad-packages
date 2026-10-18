@@ -1,11 +1,11 @@
 # npad-packages
 
-Signed **apt** and **dnf** repositories for [npad](https://github.com/platima/npad),
+Signed **apt**, **dnf** and **pacman** repositories for [npad](https://github.com/platima/npad),
 served from <https://pkg.npad.dev> by GitHub Pages.
 
 This repository holds only the machinery and the signing secrets. The packages
-themselves are never committed: the workflow downloads the `.deb` / `.rpm`
-assets of the newest stable npad releases, builds and signs the repositories,
+themselves are never committed: the workflow downloads the `.deb` / `.rpm` /
+Arch `.pkg.tar.zst` assets of the newest stable npad releases, builds and signs the repositories,
 and deploys the result with `actions/deploy-pages`. GitHub Releases on
 `platima/npad` remain the source of truth, and the signing key exists only in
 this repository's secrets, so the code repository (and anyone with access to
@@ -15,7 +15,10 @@ it) cannot sign anything.
 config.env                 BASE_URL, SOURCE_REPO, KEEP_RELEASES - the one place to change them
 scripts/fetch-releases.sh  download + sha256-verify the release packages
 scripts/build-repos.sh     build apt (apt-ftparchive) and dnf (createrepo_c, rpmsign), sign, fill the site
+scripts/build-arch-repo.sh the pacman part: sign each package, repo-add the database, sign it
 scripts/verify-repos.sh    re-check the result with the public key only, as a client would
+scripts/verify-arch-repo.sh  its pacman part
+scripts/selftest-arch.sh   throwaway-key end-to-end test in an Arch container (selftest.yml, on PRs)
 site-src/                  index.html, install.sh, npad.sources, npad.repo (templates; @BASE_URL@ is filled in)
 .github/workflows/publish.yml
 ```
@@ -26,7 +29,8 @@ What gets published at `$BASE_URL`:
 | --- | --- |
 | `/npad.asc` | public signing key (armored) |
 | `/npad.sources`, `/npad.repo` | ready-made apt (deb822) and dnf configuration |
-| `/install.sh` | detects apt or dnf, adds the repository, installs npad |
+| `/install.sh` | detects apt, dnf or pacman, adds the repository, installs npad |
+| `/arch/<arch>/` | pacman repository `npad` for `x86_64`, `aarch64` (Arch Linux ARM) and `riscv64` (Arch RISC-V): `npad.db` / `npad.files` (+ `.sig`, and the `.tar.zst` they copy), the packages and their detached `.sig` files |
 | `/apt/` | suite `stable`, component `main`, `binary-amd64`, `binary-arm64`, `binary-riscv64`: `dists/stable/{InRelease,Release,Release.gpg}`, one shared `pool/` |
 | `/rpm/` | signed rpms for `x86_64`, `aarch64` and `riscv64` plus `repodata/` with `repomd.xml.asc` |
 
@@ -151,6 +155,25 @@ sudo dnf install npad
 
 ## Things to know
 
+- **Arch Linux** (pacman). `ARCH_ARCHES` in `config.env` lists `x86_64`,
+  `aarch64` and `riscv64`. Every package gets a detached binary `.sig`, and the
+  database and files list are signed too, so the client section is
+  `[npad]`, `SigLevel = Required DatabaseRequired`,
+  `Server = https://pkg.npad.dev/arch/$arch`, with the key added to pacman's
+  keyring and locally signed (`pacman-key --add`, `--lsign-key`;
+  `install.sh` does it). `repo-add` runs in the official `archlinux`
+  container because the ubuntu runner has no pacman; the container sees only
+  the packages, and the signatures are made by the build's own gpg, the same
+  detached signatures `repo-add --sign` writes (which cannot answer a
+  passphrase prompt in CI). `repo-add` keeps only the newest version of the
+  package in the database; older packages stay downloadable. **No Arch
+  packages yet is not an error**: releases before the one that first attached
+  them (npad v0.35.0 has none) publish no `/arch` at all, the landing page says
+  the repository is not published yet, and `install.sh` stops on Arch with a
+  pointer to the release package instead of adding a repository that would
+  404. On Arch, `pacman -Sy <pkg>` alone is a partial upgrade Arch does not
+  support, so `install.sh` runs `pacman -Sy npad` only when GTK 3 is already
+  installed and `pacman -Syu npad` otherwise.
 - **Architectures**: amd64, arm64 and riscv64 (rpm: x86_64, aarch64,
   riscv64), from npad v0.35.0 on; older releases are amd64 only, so the arm64
   and riscv64 indexes start empty and fill as releases carry them. The list
@@ -179,7 +202,9 @@ sudo dnf install npad
 ## Testing the scripts locally
 
 Everything runs with a throwaway key; no secrets involved. Needs `apt-utils`
-(`apt-ftparchive`), `createrepo-c`, `rpm`, `gnupg`.
+(`apt-ftparchive`), `createrepo-c`, `rpm`, `gnupg`, and `repo-add` or docker for
+the pacman part (without any `.pkg.tar.zst` in the assets the pacman part is
+skipped).
 
 ```bash
 export GNUPGHOME=$(mktemp -d)
@@ -194,3 +219,11 @@ To exercise apt against the result without touching the system, point an
 `APT_CONFIG` at private `Dir::State`, `Dir::Cache` and `Dir::Etc::sourceparts`
 directories whose `npad.sources` uses `URIs: file:///.../site/apt` and a
 `Signed-By` path to your test `npad.asc`.
+
+The pacman side has its own end-to-end test with fake packages, in a throwaway
+Arch (it adds a repository to `/etc/pacman.conf` and installs a fake npad, so
+use a container):
+
+```bash
+docker run --rm -v "$PWD:/src:ro" archlinux:latest sh /src/scripts/selftest-arch.sh
+```

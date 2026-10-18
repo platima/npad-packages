@@ -1,8 +1,11 @@
 name: Publish repositories
 
-# Builds the signed apt and dnf repositories from the .deb/.rpm assets of the
-# newest stable npad releases and deploys them with GitHub Pages
-# (https://pkg.npad.dev - see config.env). No package is ever committed to git.
+# Builds the signed apt, dnf and pacman repositories from the .deb, .rpm and
+# Arch .pkg.tar.zst assets of the newest stable npad releases and deploys them
+# with GitHub Pages (https://pkg.npad.dev - see config.env). No package is ever
+# committed to git. The pacman repository is built in an archlinux container
+# (repo-add), which sees only the packages, never the signing key; releases
+# that predate the Arch packages simply publish none.
 #
 # Triggers:
 #   repository_dispatch  platima/npad's release workflow, after its assets are
@@ -47,7 +50,9 @@ jobs:
     - name: Install tools
       run: |
         sudo apt-get update -q
-        sudo apt-get install -y -q apt-utils createrepo-c rpm gnupg
+        sudo apt-get install -y -q apt-utils createrepo-c rpm gnupg zstd
+        # build-arch-repo.sh runs repo-add in the official archlinux image
+        docker pull -q archlinux:latest
 
     - name: Import the signing key
       env:

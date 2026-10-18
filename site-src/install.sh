@@ -100,7 +100,12 @@ pacman)
 	mkdir -m 700 "$tmp/gnupg"
 	fpr=$(GNUPGHOME=$tmp/gnupg gpg --batch --show-keys --with-colons "$key" | awk -F: '$1 == "fpr" { print $10; exit }')
 	[ -n "$fpr" ] || die "could not read the fingerprint of the signing key"
-	[ -d /etc/pacman.d/gnupg ] || as_root pacman-key --init
+	# A fresh install, or a container image, may have no keyring master key
+	# to sign trust with yet
+	if [ -z "$(as_root gpg --homedir /etc/pacman.d/gnupg --list-secret-keys 2>/dev/null)" ]; then
+		as_root pacman-key --init
+		as_root pacman-key --populate
+	fi
 	as_root pacman-key --add "$key"
 	as_root pacman-key --lsign-key "$fpr"
 	# Once only: a second run leaves pacman.conf as it is

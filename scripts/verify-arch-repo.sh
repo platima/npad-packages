@@ -36,7 +36,9 @@ for arch in $ARCH_ARCHES; do
 			fail "arch/$arch/npad.$f.tar.zst signature"
 		gpgv --keyring "$tmp/keyring.gpg" "$dir/npad.$f.sig" "$dir/npad.$f" 2>/dev/null ||
 			fail "arch/$arch/npad.$f signature"
-		cmp -s "$dir/npad.$f" "$dir/npad.$f.tar.zst" || fail "arch/$arch/npad.$f is not npad.$f.tar.zst"
+		# (sha256sum, not cmp: diffutils is not in the minimal Arch image)
+		[ "$(sha256sum <"$dir/npad.$f")" = "$(sha256sum <"$dir/npad.$f.tar.zst")" ] ||
+			fail "arch/$arch/npad.$f is not npad.$f.tar.zst"
 	done
 	n=0
 	for pkg in "$dir"/*.pkg.tar.zst; do

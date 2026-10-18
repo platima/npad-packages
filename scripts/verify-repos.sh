@@ -70,3 +70,7 @@ for rpm in "$site"/rpm/*.rpm; do
 done
 [ "$n" -gt 0 ] || fail "no rpms"
 echo "dnf: repomd.xml.asc verifies; $n rpms signed"
+
+
+# pacman (optional: a release may predate the Arch packages)
+sh "$here/scripts/verify-arch-repo.sh" "$site"
